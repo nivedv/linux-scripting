@@ -1,11 +1,16 @@
 #!/bin/bash
 # ============================================
-# ACL Demo Environment Setup
+# Module 14: ACL Demo Environment Setup
 # Creates users, groups, and test structures
+# in /home/rps directory
+# 
+# NOTE: Permissions are NOT set here
+# They will be demonstrated live in the demo
 # ============================================
 
 echo "=========================================="
 echo "Setting up ACL Demo Environment"
+echo "Home directory: /home/rps"
 echo "=========================================="
 echo ""
 
@@ -16,9 +21,26 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ============================================
+# STEP 0: Create/Verify rps user
+# ============================================
+echo "[0/5] Checking rps user..."
+
+if id "rps" &>/dev/null; then
+    echo "  ✅ User 'rps' already exists"
+else
+    echo "  Creating user 'rps'..."
+    sudo useradd -m -s /bin/bash rps
+    echo "  ✅ User 'rps' created"
+fi
+
+RPS_HOME=$(eval echo ~rps)
+echo "  Home directory: $RPS_HOME"
+echo ""
+
+# ============================================
 # STEP 1: Create Test Users
 # ============================================
-echo "[1/6] Creating test users..."
+echo "[1/5] Creating test users..."
 
 # User group: Loan Department
 sudo useradd -m -s /bin/bash loanOfficer1 2>/dev/null || true
@@ -48,7 +70,7 @@ echo ""
 # ============================================
 # STEP 2: Create Test Groups
 # ============================================
-echo "[2/6] Creating test groups..."
+echo "[2/5] Creating test groups..."
 
 sudo groupadd loan_dept 2>/dev/null || true
 sudo groupadd risk_dept 2>/dev/null || true
@@ -63,7 +85,7 @@ echo ""
 # ============================================
 # STEP 3: Add Users to Groups
 # ============================================
-echo "[3/6] Adding users to groups..."
+echo "[3/5] Adding users to groups..."
 
 # Loan Officers
 sudo usermod -a -G loan_dept loanOfficer1
@@ -82,72 +104,109 @@ sudo usermod -a -G legal_dept legalUser1
 # Auditors
 sudo usermod -a -G audit_dept auditor1
 
+# Add all test users to rps group for cross-access
+sudo usermod -a -G rps loanOfficer1
+sudo usermod -a -G rps loanOfficer2
+sudo usermod -a -G rps riskManager1
+sudo usermod -a -G rps riskManager2
+sudo usermod -a -G rps financeUser1
+sudo usermod -a -G rps legalUser1
+sudo usermod -a -G rps auditor1
+
 echo "  ✅ Users added to groups"
+echo "  ✅ All test users added to 'rps' group for access"
 echo ""
 
 # ============================================
-# STEP 4: Create Directory Structure
+# STEP 4: Create Directory and File Structure
 # ============================================
-echo "[4/6] Creating demo directory structure..."
+echo "[4/5] Creating demo directory structure..."
 
-# Base directory
-sudo mkdir -p /shared/loan_applications
-sudo mkdir -p /shared/loan_processing
-sudo mkdir -p /projects/merger_analysis
-sudo mkdir -p /finance/reports/q3_2024
+# Create directories in rps home
+# NOTE: Using default permissions (not customizing)
+sudo mkdir -p "$RPS_HOME/loan_applications"
+sudo mkdir -p "$RPS_HOME/loan_processing"
+sudo mkdir -p "$RPS_HOME/merger_analysis"
+sudo mkdir -p "$RPS_HOME/finance_reports"
 
-echo "  ✅ Directories created"
+# Ensure rps owns all directories
+sudo chown -R rps:rps "$RPS_HOME/loan_applications"
+sudo chown -R rps:rps "$RPS_HOME/loan_processing"
+sudo chown -R rps:rps "$RPS_HOME/merger_analysis"
+sudo chown -R rps:rps "$RPS_HOME/finance_reports"
+
+# Create sample files (NO permission changes yet - will do in demo!)
+sudo touch "$RPS_HOME/loan_applications/loan_12345.txt"
+sudo touch "$RPS_HOME/loan_applications/loan_12346.txt"
+sudo touch "$RPS_HOME/loan_applications/loan_12347.txt"
+
+sudo touch "$RPS_HOME/merger_analysis/analysis_report.txt"
+
+sudo touch "$RPS_HOME/finance_reports/financial_report.txt"
+sudo touch "$RPS_HOME/finance_reports/audit_trail.log"
+
+# Set ownership of files to rps
+sudo chown rps:rps "$RPS_HOME/loan_applications/"*.txt
+sudo chown rps:rps "$RPS_HOME/merger_analysis/"*.txt
+sudo chown rps:rps "$RPS_HOME/finance_reports/"*
+
+echo "  ✅ Directories created in $RPS_HOME:"
+echo "     - loan_applications/"
+echo "     - loan_processing/"
+echo "     - merger_analysis/"
+echo "     - finance_reports/"
+echo ""
+echo "  ✅ Sample files created (default permissions)"
 echo ""
 
 # ============================================
-# STEP 5: Set Up Initial Permissions
+# STEP 5: Create Test Access Script
 # ============================================
-echo "[5/6] Setting up initial permissions..."
+echo "[5/5] Creating convenience scripts..."
 
-# Loan Applications Directory
-# Owner: loanOfficer1, Group: loan_dept, Permission: 660
-sudo chown loanOfficer1:loan_dept /shared/loan_applications
-sudo chmod 660 /shared/loan_applications
+# Create a test access script
+cat > "$RPS_HOME/test_acl_access.sh" << 'EOF'
+#!/bin/bash
+# Test script to verify ACL access
 
-# Create sample loan files
-sudo touch /shared/loan_applications/loan_12345.txt
-sudo touch /shared/loan_applications/loan_12346.txt
-sudo touch /shared/loan_applications/loan_12347.txt
+TEST_FILE="/home/rps/loan_applications/loan_12345.txt"
 
-# Set file permissions to match
-sudo chown loanOfficer1:loan_dept /shared/loan_applications/loan_*.txt
-sudo chmod 660 /shared/loan_applications/loan_*.txt
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║       Testing ACL Access Permissions                       ║"
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
 
-# Loan Processing Directory (for SGID demo)
-sudo mkdir -p /shared/loan_processing
-sudo chown loanOfficer1:loan_dept /shared/loan_processing
-sudo chmod 2770 /shared/loan_processing  # SGID bit set
+echo "Current user: $(whoami)"
+echo "User groups: $(groups)"
+echo ""
 
-# Projects Directory (for multi-team ACL demo)
-sudo mkdir -p /projects/merger_analysis
-sudo chown loanOfficer1:loan_dept /projects/merger_analysis
-sudo chmod 770 /projects/merger_analysis
+echo "Attempting to read: $TEST_FILE"
+if cat "$TEST_FILE" 2>/dev/null; then
+    echo "✅ READ: Success"
+else
+    echo "❌ READ: Permission denied"
+fi
 
-# Finance Reports
-sudo mkdir -p /finance/reports/q3_2024
-sudo chown financeUser1:finance_dept /finance/reports/q3_2024
-sudo chmod 770 /finance/reports/q3_2024
+echo ""
+echo "File permissions:"
+ls -l "$TEST_FILE"
 
-# Create sample report files
-sudo touch /finance/reports/q3_2024/financial_report.txt
-sudo touch /finance/reports/q3_2024/audit_trail.log
-sudo chown financeUser1:finance_dept /finance/reports/q3_2024/*.txt
-sudo chown financeUser1:finance_dept /finance/reports/q3_2024/*.log
-sudo chmod 640 /finance/reports/q3_2024/*.txt
-sudo chmod 640 /finance/reports/q3_2024/*.log
+echo ""
+echo "File ACL:"
+getfacl "$TEST_FILE"
+EOF
 
-echo "  ✅ Initial permissions set"
+chmod +x "$RPS_HOME/test_acl_access.sh"
+sudo chown rps:rps "$RPS_HOME/test_acl_access.sh"
+
+echo "  ✅ Test access script created:"
+echo "     - /home/rps/test_acl_access.sh"
 echo ""
 
 # ============================================
-# STEP 6: Verify Setup
+# VERIFY SETUP
 # ============================================
-echo "[6/6] Verifying setup..."
+echo "Verifying setup..."
 echo ""
 
 echo "=== Users Created ==="
@@ -155,27 +214,38 @@ cut -d: -f1 /etc/passwd | grep -E "^(loanOfficer|riskManager|financeUser|legalUs
 
 echo ""
 echo "=== Groups Created ==="
-cut -d: -f1 /etc/group | grep -E "_(dept|team)" | sort
+cut -d: -f1 /etc/group | grep -E "_(dept|team)|^rps$" | sort
 
 echo ""
 echo "=== Directory Structure ==="
-ls -ld /shared /projects /finance 2>/dev/null
+ls -ld "$RPS_HOME"/loan_* "$RPS_HOME"/merger_* "$RPS_HOME"/finance_* 2>/dev/null
 
 echo ""
-echo "=== Sample Files ==="
-ls -l /shared/loan_applications/loan_*.txt 2>/dev/null | head -3
+echo "=== Sample Files (with DEFAULT permissions) ==="
+ls -l "$RPS_HOME/loan_applications/loan_12345.txt"
+echo ""
+echo "NOTE: Permissions are at DEFAULT. You will change them in the live demo!"
+
+echo ""
+echo "=== Current ACL (should be empty) ==="
+getfacl "$RPS_HOME/loan_applications/loan_12345.txt" 2>/dev/null | grep -E "^(user|group|mask|other):"
 
 echo ""
 echo "=========================================="
 echo "✅ Setup Complete!"
 echo "=========================================="
 echo ""
-echo "Ready for ACL demos!"
+echo "Demo Location: /home/rps/"
 echo ""
-echo "Test Access:"
-echo "  sudo su - loanOfficer1"
-echo "  cat /shared/loan_applications/loan_12345.txt"
+echo "IMPORTANT: Files have DEFAULT permissions"
+echo "You will demonstrate chmod and ACL changes live!"
 echo ""
-echo "Cleanup when done:"
-echo "  sudo bash cleanup_module14_acl_demo.sh"
+echo "Ready to Demo:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+echo "Test access script:"
+echo "  bash /home/rps/test_acl_access.sh"
+echo ""
+echo "View current permissions:"
+echo "  ls -l /home/rps/loan_applications/"
+echo
